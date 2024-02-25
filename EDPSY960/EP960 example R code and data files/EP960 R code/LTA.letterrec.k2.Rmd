@@ -1,0 +1,80 @@
+---
+title: "EP 960 Basic Markov Model"
+author: "David Kaplan"
+output:
+html_document: default
+pdf_document: default
+---
+
+```{r, echo=FALSE}
+	knitr::opts_chunk$set(echo = TRUE)
+```
+## Install relevant packages
+
+install.packages("LMest")
+install.packages("MultiLCIRT")
+
+```{r,echo=TRUE}
+library(LMest)
+library(MultiLCIRT)
+```
+
+## Basic Latent Markov Model for letter recognition ##
+## Coded in data as 0 = non-mastery, 1 =  mastery ##
+## Coded in output as 1 = non-mastery 2 = mastery ##
+
+## Read in data
+```{r,echo=TRUE}
+ecls <- read.csv("~/Desktop/reading.csv",header=T)
+letterrec <- subset(ecls,select=c("letterrec1","letterrec2","letterrec3","letterrec4"))
+```
+
+## Set-up data for LMest
+## get response patterns and frequencies
+
+```{r,echo=TRUE}
+letterrecagg <- aggr_data(letterrec)
+length(letterrecagg$freq)
+letterrecfreq <- cbind(letterrecagg$data_dis,letterrecagg$freq)
+colnames(letterrecfreq) <- c("letterrec1","letterrec2","letterrec3","letterrec4","freq")
+```
+This shows the pattern of reponses and frequencies of response patterns
+
+```{r,echo=TRUE}
+S=letterrecfreq[,1:4]
+yv=letterrecfreq[,5]
+n=sum(yv)
+S
+yv
+n
+```
+
+This shows the frequencies of the distinct reponse patterns
+
+
+## Run LMest 
+## mod=0,time-hetero; mod=1, time-homog 
+## k is the number of latent states (classes)
+
+```{r,echo=TRUE}
+letterrecLM <- est_lm_basic(S,yv,k=2,mod=0)
+```
+This is the iteration history.
+
+```{r,echo=TRUE}
+options(scipen=999)
+summary(letterrecLM)
+```
+
+If we look at the bottom under "Conditional response probabilities", we see two states:  A non-mastery state and a mastery state.
+
+At time 1, 31% of the sample are in the non-mastery state and 69% of the sample are in the mastery state.
+
+Looking at the transition probabilities, we see that among the 31% that were in the non-mastery state at time 1, the probability that they remain in that state is .17, and the probability that they transition to the mastery state is .83.  Among the 69% that were in the mastery state, there is approx. zero probability of regressing and a 1.0 probability of remaining in the mastery state at time 2. 
+
+Among those in the non-mastery state at time 2, there is a .41 probability of remaining in that state at time 3 and a .59 probability of moving to the mastery state at time 3.  Here we that there is a slowing down of the transition probabilities.  Remaining transition probabilities are interpreted similarly.  
+
+```{r,echo=TRUE}
+letterrecLM
+```
+This section gives AIC and BIC information that can be used for model comparison.

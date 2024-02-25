@@ -1,0 +1,116 @@
+---
+title: "EP 960 PCA and EFA"
+author: "David Kaplan"
+output:
+  html_document: default
+---
+
+```{r,echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Install necessary packages and load
+
+install.packages("GPArotation")
+
+install.packages("psych")
+
+```{r,echo=TRUE}
+library(graphics)
+library(psych)
+library(GPArotation)
+```
+
+# Read in data
+
+### These data are based on responses from 876 Indonesian teachers to a teacher burnout inventory.  The hypothesized constructs and variables are measured on a 1=strongly disagree to 5=strongly agree scale
+
+Teacher Self-Concept (TSC, 5)
+1.	I think I have good teaching skills and ability.
+2.	I have a reputation for being an efficient teacher.
+3.	My colleagues regard me as a competent teacher. 
+4.	I feel I am a valuable person.
+5.	Generally speaking, I am a good teacher.
+
+Teacher Efficacy (TE, 5)
+1.	I help my students value learning.
+2.	I motivate students who show low interest in schoolwork .
+3.	I improve understanding of students who are failing.
+4.	I provide appropriate challenges for very capable students. 
+5.	I get students the students to follow classroom rules. 
+
+Emotional Exhaustion (EE, 5) 
+1.	I feel emotionally drained from my work.
+2.	I feel used up at the end of the workday. 
+3.	I feel fatigued when I get up in the morning and have to face another day on the job.
+4.	I feel burnt out from my work. 
+5.	Working with people all day is really a strain on me. 
+
+Depersonalization (DP, 3)
+1.	I’ve become more callous toward people since I took this job.
+2.	I worry that this job is hardening me emotionally.
+3.	I feel frustrated by my job.
+
+Reduced Personal Accomplishment (RPA, 7)
+1.	I cannot easily create a relaxed atmosphere with my students.
+2.	I do not feel exhilarated after working closely with my students.
+3.	I have not accomplished many worthwhile things in this job.
+4.	I do not feel like I’m at the end of my rope.
+5.	In my work, I do not deal with emotional problems very calmly.
+
+
+```{r,echo=TRUE}
+burnout <- read.csv("~/desktop/TeachBurnout.csv",header=T)
+burnout <- burnout[is.finite(rowSums(burnout)),]
+```
+
+# Obtain summary statistics and correlations
+
+```{r psych, echo=TRUE}
+describe(burnout) 
+cor(burnout)
+```
+# PCA with scree plot based on centered data and scaled to have unit variances
+
+```{r,echo=TRUE}
+
+burnoutPCA <- print(summary(prcomp(burnout))) 
+screeplot(burnoutPCA,type="lines")	                       
+```
+
+The results of the PCA show that 42% of the variance is accounted for by the first principal component, and additional 7% by the second PC and so on. Only the first PC has an eigenvalue over 1.0.  
+
+
+# EFA 1-factor model with varimax and a 5-factor model with varimax and promax
+
+```{r plot,echo=TRUE}
+burnoutPAvari1 <- fa(burnout,nfactors=1,rotate="varimax",fm="pa")
+burnoutPAvari1
+
+burnoutPAvari5 <- fa(burnout,nfactors=5,rotate="varimax",fm="pa")
+burnoutPAvari5
+
+burnoutPApro5 <- fa(burnout,nfactors=5,rotate="promax",fm="pa")
+burnoutPApro5   
+   
+
+```
+
+Notice that the 1-factor solution does not have uniformly high loadings, which may be due to the fact that there are multiple factors.  The 5-factor solution using varimax does not show a very clear solution with some items showing high item complexity.  The 5-factor solution using promax reduces the item complexity, provides a much clearer solution, and provides the factor correlations, showing just how high the factor correlations are.
+
+
+# EFA with ML Estimation and promax rotation: 5-factor solution with comparison to a 4-factor solution
+
+```{r, echo=TRUE}
+burnoutMLpro <- fa(burnout,nfactors=5,rotate="promax",fm="ml")
+burnoutMLpro
+```
+
+# EFA with ML Estimation and promax rotation: Four-factor solution
+
+```{r, echo=TRUE}
+burnoutMLpro <- fa(burnout,nfactors=4,rotate="promax",fm="ml")
+burnoutMLpro
+```
+
+We see that the five factor model shows adequate fit to the data as measured by the RMSEA.  The TLI is not bad.  The likelihood ratio chi-square indicates a lack of exact fit, but this is not surprising.  The interpretation of the factor structure is not much different from the EFA results.  The 4-factor solution indicates a worse fit and a large BIC relative to the 5-factor model.  In addition, the 4-factor solution indicates a near Heywood case.  On the basis of this evidence, a 5-factor model seems most reasonable to retain.

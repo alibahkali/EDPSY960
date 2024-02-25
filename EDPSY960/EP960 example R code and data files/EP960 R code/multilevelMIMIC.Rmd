@@ -1,0 +1,146 @@
+---
+title: "Multilevel MIMIC Model"
+subtitle: "EP 960"
+author: "David Kaplan"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Install relevant packages
+
+install.packages("lavaan", repos="http://www.da.ugent.be", type="source")
+
+install.packages("semTools")
+
+require(lavaan)
+
+require(semTools)
+
+```{r,echo=TRUE}
+library(lavaan)
+library(semTools)
+```
+
+# Read in the data
+
+```{r, echo=TRUE}
+# Read in data 
+
+CanadaMIMIC <-read.csv("~/desktop/Canada.csv",header=TRUE) 
+CanadaMIMIC <- subset(CanadaMIMIC, select=c(IDSCHOOL,ITSEX, ASBR08A,ASBR08B,ASBR08C,ASBR08D,ASBR08E,ASBR08F,ASBR08G))
+male <- ifelse(CanadaMIMIC$ITSEX == 2,0,1)
+names(CanadaMIMIC) <- c("schoolID","male","dowell","easy","harder","interesting","difficultwords","teacherpraise","otherthings")
+CanadaMIMIC[CanadaMIMIC==999999]=NA
+```
+
+# Variable names and labels
+
+## The scale is from Agree a lot, Agree, Disagree, Disagree a lot
+#### male - male = 1
+#### dowell - I usually do well in reading
+#### easy - Reading is easy for me
+#### harder - Reading is harder for me than for many of my classmates
+#### interesting - If a book is interesting, I don’t care how hard it is to read
+#### difficultwords - I have trouble reading stories with difficult words
+#### teacherpraise - My teacher tells me I am a good reader 
+#### otherthings - Reading is harder for me than any other subject
+
+
+# Model 1: MIMC with no structure on school level
+```{r,echo=TRUE}
+MIMICmodelM1 <- '
+
+level: 1
+  fw1 =~ dowell + easy + interesting + teacherpraise
+  fw2 =~ harder + difficultwords + otherthings
+  fw1 ~ male
+  fw2 ~ male
+
+level: 2
+  male ~~  male + dowell + easy + interesting + teacherpraise + harder + difficultwords + otherthings
+  dowell ~~ dowell + easy + interesting + teacherpraise + harder + difficultwords + otherthings
+  easy ~~ easy + interesting + teacherpraise + harder + difficultwords + otherthings
+  interesting ~~ interesting + teacherpraise + harder + difficultwords + otherthings
+  teacherpraise ~~ teacherpraise + harder + difficultwords + otherthings
+  harder ~~  harder + difficultwords + otherthings
+  difficultwords ~~ difficultwords + otherthings
+  otherthings ~~ otherthings
+'
+```
+
+Notice that for level-2 we are simple allowing for an unrestricted between level covariance matrix.
+
+## Obtain results, fit statistics, and intraclass correlations
+
+```{r,echo=TRUE}
+fit <- sem(MIMICmodelM1, data = CanadaMIMIC, estimator="mlr", missing="fiml", cluster = "schoolID")
+
+summary(fit)
+fitMeasures(fit,fit.measures=c("chisq","rmsea","cfi","bic"))
+lavInspect(fit, "h1")
+lavInspect(fit, "icc")
+```
+
+First, pay close attention to the BIC.  Second, notice that the ICCs are quite small suggesting that not very much of the variation in these measures can be explained by differences among schools.
+
+
+# Model 2: Allow structure on school level
+```{r,echo=TRUE}
+MIMICmodelM2 <- '
+
+level: 1
+  fw1 =~ dowell + easy + interesting + teacherpraise
+  fw2 =~ harder + difficultwords + otherthings
+  fw1 ~ male
+  fw2 ~ male
+
+level: 2
+  fb1 =~ dowell + easy + interesting + teacherpraise
+  fb2 =~ harder + difficultwords + otherthings
+  fb1 ~ male
+  fb2 ~ male
+
+# Fix between variances to zero
+
+  dowell ~~ 0*dowell
+  easy ~~ 0*easy
+  interesting ~~ 0*interesting
+  teacherpraise ~~ 0*teacherpraise
+  harder ~~ 0*harder
+  difficultwords ~~ 0*difficultwords
+  otherthings ~~ 0*otherthings
+
+'
+```
+
+Notice here that we are modeling the between school covariance matrix as a function of the same two factors and their relationships to gender.  Note that at the school level gender is a percentage.  That is, the percent male and female in the school.  Also, often the between variances are slightly negative, so it is typical to fix the level-2 variances to zero.
+
+## Obtain fit statistics
+```{r,echo=TRUE}
+fit2 <- sem(MIMICmodelM2, data = CanadaMIMIC, estimator="mlr", missing="fiml",
+           cluster = "schoolID")
+summary(fit2)
+fitMeasures(fit2,fit.measures=c("chisq","rmsea","cfi","bic"))
+lavInspect(fit2, "h1")
+lavInspect(fit2, "icc")
+```
+Notice that the BIC for this model is lower than the BIC for the first model that did not specify a structure at the school level.
+
+# Model 3: Compare to ignoring multilevel structure
+```{r,echo=TRUE}
+MIMICmodel <- '
+
+  f1 =~ dowell + easy + interesting + teacherpraise
+  f2 =~ harder + difficultwords + otherthings
+  f1 ~ male
+  f2 ~ male
+'
+fit3 <- cfa(MIMICmodel, data = CanadaMIMIC, estimator="mlr", missing="fiml",)
+summary(fit3)
+fitMeasures(fit3,fit.measures=c("chisq","rmsea","cfi","bic"))
+```
+
+Notice that the BIC is even lower for the model ignoring the multilevel structure than the other two models.  This can happen and is probably due to the very small amount of variation accounted for by school differences.

@@ -1,0 +1,120 @@
+---
+title: "EP 960 Growth Curve Modeling"
+author: "David Kaplan"
+output:
+  html_document: default
+pdf_document: default
+
+---
+  
+```{r,echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Install relevant packages
+install.packages("lavaan")
+
+install.packages("semTools")
+
+```{r,echo=TRUE}
+library(lavaan)
+library(semTools)
+```
+
+# Read in data from the Longitudinal Study of American Youth
+
+```{r,echo=TRUE}
+lsay <- read.csv("~/desktop/lsay.ex.csv",header=T)
+```
+
+
+# Baseline linear growth model 
+```{r,echo=TRUE}
+
+model1 <- '
+  # intercept and slope with fixed coefficients
+i =~ 1*sciach1 + 1*sciach2 + 1*sciach3 + 1*sciach4 + 1*sciach5
+s =~ 0*sciach1 + 1*sciach2 + 2*sciach3 + 3*sciach4 + 4*sciach5
+
+'
+
+fit1 <- growth(model1, data=lsay)
+summary(fit1, fit.measures=TRUE)
+standardizedsolution(fit1)
+```
+Under the "Intercepts:" section, you see estimate of the intercept (i) and the slope (s).  Under "Variances:" you see the variances of intercept and slope.  The results suggest that for this sample, the starting level of science achievement is approximately 50 points with an average increase of 2.206 points per year over the 5 years.  The slope is postive and statistically significant. The correlation between the intercept and slope is -.392 which may indicate a ceiling effect.
+
+
+# Growth model with quadratic term
+
+```{r,echo=TRUE}
+
+model2 <-'
+
+i =~ 1*sciach1 + 1*sciach2 + 1*sciach3 + 1*sciach4 + 1*sciach5
+s =~ 0*sciach1 + 1*sciach2 + 2*sciach3 + 3*sciach4 + 4*sciach5
+q =~ 0*sciach1 + 1*sciach2 + 4*sciach3 + 9*sciach4 + 16*sciach5
+'
+
+fit2 <- growth(model2, data=lsay)
+summary(fit2, fit.measures=TRUE)
+standardizedsolution(fit2)
+
+```
+
+We see that the quadratic model is preferred to the linear model on the basis of the BIC.  The quadratic coefficient and statistically significant indicating a statistically significant deacceleration in growth over time.  The negative correlation between the intercept and slope indicates that those with steeper linear growth have much steeper deaccelertation in science achievement growth.  This could be due to ceiling effects on the test in this example.
+
+# Linear growth model with gender added
+
+```{r,echo=TRUE}
+
+model3 <- '
+  # intercept and slope with fixed coefficients
+i =~ 1*sciach1 + 1*sciach2 + 1*sciach3 + 1*sciach4 + 1*sciach5
+s =~ 0*sciach1 + 1*sciach2 + 2*sciach3 + 3*sciach4 + 4*sciach5
+
+i ~ male
+s ~ male
+
+'
+
+fit3 <- growth(model3, data=lsay)
+summary(fit3, fit.measures=TRUE)
+standardizedsolution(fit3)
+```
+For this analysis, we find that boys start out with higher achievement scores, but there is not a statistically significant difference in the growth rate over time between boys and girls.
+
+# Latent Basis Modeling 
+
+```{r,echo=TRUE}
+model4 <- '
+  # intercept and slope with fixed coefficients
+i =~ 1*sciach1 + 1*sciach2 + 1*sciach3 + 1*sciach4 + 1*sciach5
+s =~ 0*sciach1 + 1*sciach2 + sciach3 + sciach4 + sciach5
+
+i ~ male
+s ~ male
+
+'
+
+fit4 <- growth(model4, data=lsay)
+summary(fit4, fit.measures=TRUE)
+
+```
+
+Notice the non-linearity picked up by the unequal spacing in the parameters for the slope.  Rather than fixing this to a quadratic function, the latent basis modeling allows one to fit the curve a bit better.  However, this curve fitting is done on the data itself.  Nevertheless, this model is slightly preferred to the quadratic model on the basis of the BIC.  Often this model will fit better, but that is not surprising as the data is being used to fit the model.
+
+# Estimating proportion of total change over time.  Another type of latent basis modeling
+
+```{r,echo=TRUE}
+model5 <- '
+
+i =~ 1*sciach1 + 1*sciach2 + 1*sciach3 + 1*sciach4 + 1*sciach5
+s =~ 0*sciach1 + sciach2 + sciach3 + sciach4 + 1*sciach5
+
+'
+fit5 <- growth(model5, data=lsay)
+summary(fit5, fit.measures=TRUE)
+```
+
+Now notice that the free estimates represent the % change over time.  The slope indicates the total amount of change over time.  The proportion of the total change from wave 1 to wave 2 is a 19.7%.  The proportion of the total change from wave 2 to wave 3 is 46% change. From wave 3 to wave 4 it is 11.5% and from wave 4 to wave 5 it is 22.6%.  Thus the largest change in science achievement scores occurs between waves 2 and 3, which was between 8th grade and 9th grade.  

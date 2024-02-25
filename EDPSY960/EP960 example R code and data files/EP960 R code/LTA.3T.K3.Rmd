@@ -1,0 +1,71 @@
+---
+title: "EP 960 Latent Transition Analysis"
+author: "David Kaplan"
+output:
+html_document: default
+pdf_document: default
+---
+```{r, echo=FALSE}
+	knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Install relevant packages
+install.packages("LMest")
+install.packages("MultiLCIRT")
+
+```{r,echo=TRUE}
+library(LMest)
+library(MultiLCIRT)
+```
+
+## Latent Markov Model for Reading ability  ##
+## 0 = non-mastery, 1 =  mastery ##
+
+# Read in data
+```{r,echo=TRUE}
+ecls <- read.csv("~/Desktop/reading.csv",header=T)
+reading <- subset(ecls,select=c("letterrec1","beginning1","ending1","words1","reading1",
+"letterrec2","beginning2","ending2","words2","reading2", 
+"letterrec3","beginning3","ending3","words3","reading3"))
+```
+
+## Arrange data for LMest
+## Get response patterns and frequencies
+
+```{r,echo=TRUE}
+reading3tagg <- aggr_data(reading)
+ns = length(reading3tagg$freq)
+r = 5
+TT = 3
+```
+
+## Aggregated data matrix in wide format
+```{r,echo=TRUE}
+S = reading3tagg$data_dis
+```
+
+## Arrange data matrix in array format of dimension ns x TT x r
+```{r,echo=TRUE}
+S = array(t(S),c(r,TT,ns))
+S = aperm(S)
+yv = reading3tagg$freq
+```
+## Run LMest
+## Three-class model over three time points
+```{r,echo=TRUE}
+reading3tLM <- est_lm_basic(S,yv,k=3,mod=0)
+options(scipen=999) 
+summary(reading3tLM)
+```
+We use the conditional response probabilities to name the latent classes. We see that class 1 is comprised of kids who have mostly mastered letter recognition, but not much else. From the initial probabiities this group is about 69% of the sample.  
+
+Class 2 is comprised of kids who have mastered letter recognition, beginning sounds, and a majority of whom have mastered ending sounds. This is about 28% of the sample.
+
+Class 3 is comprised of kids who have mostly mastered all of the skills of reading except reading words in context.  This group comprises about 3% of the sample, which is not surprising given the age of these kids.
+
+Examining the transition probabilites, we see those in Class 1 at time 1, have about a .28 probability of staying in Class 1, about a .71 probability of transitioning to Class 2 and about a .01 probability of transitioning to Class 3.  Those in Class 2 at time 1 have about a .57 probability of staying in Class 2 and a .43 probability of transitioning to Class 3 at time 2.  Those in Class 3 at time 1 have 1.0 probability of staying in Class 3 at time 2.  The transitions from time point 2 to time point 3 are similarly interpreted.
+
+```{r,echo=TRUE}
+reading3tLM
+```
+This section provides the AIC and BIC for model comparison purposes.  

@@ -1,0 +1,453 @@
+---
+title: "HW1"
+author: "Ali Bahkali"
+date: "2024-02-09"
+output: html_document
+---
+
+```{r lab setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preliminary set-ups
+
+This first section is to install and set up the list of packages needed for this lab:
+
+```{r lab packages}
+# List of packages that are possibly needed for the analysis and formatting in this lab: 
+myPackages <- c("lme4", "rsq", "MuMIn", "optimx", "MASS", "dplyr", "ggplot2", 
+                "HLMdiag", "lmtest", "lmerTest", "psy", "PowerUpR","nlme", "MVN", 
+                "skimr", "tidyverse", "pacman", "lavaan", "semTools", "gsl")
+
+# then check if all the needed packages are installed by checking against the list 
+# of already installed packages in R:
+installed <- sapply(myPackages, function(p) p %in% rownames(installed.packages()))
+
+# and install any missing packages:
+if (any(!installed)) {
+  install.packages(myPackages[!installed])
+}
+
+# then initiate the packages management library:
+library(pacman)
+
+# to load the rest of the needed libraries in this lab at once:
+p_load(lme4, rsq, MuMIn, optimx, MASS, dplyr, ggplot2, HLMdiag, lmtest, lmerTest, 
+       psy, PowerUpR, nlme, MVN, skimr, tidyverse, lavaan, semTools, gsl)
+```
+
+Then data loading, cleaning, and preparation for the analysis:
+
+```{r data loading}
+# Data loading:
+PISA09.PathAnalysis <- 
+  read.csv("https://raw.githubusercontent.com/alibahkali/EDPSY960/main/PISA09.PathAnalysis.csv")
+
+# since the data has missing values (9999), we need to clean them list-wise by
+# looping through each column in the data frame to convert missing values into NAs
+for(col in names(PISA09.PathAnalysis)) {
+  PISA09.PathAnalysis[[col]][PISA09.PathAnalysis[[col]] == 9999] <- NA
+}
+
+skim(PISA09.PathAnalysis)
+```
+The output above shows that there are 7 variables with 5233 observations all are in numeric format. The variable of READING has a noticeably higher scale than the rest of the variables so we might need to rescale this variable. 
+The output also shows that there are several missing values from 5 variables, so we need to clean the data list-wise and view the first few records:
+
+```{r Remove Missing Values}
+# then remove records with any missing values from the data frame
+PISA09.PathAnalysis <- na.omit(PISA09.PathAnalysis)
+
+# ewview the first few raws of the dataset:
+head(PISA09.PathAnalysis)
+
+```
+
+# Question 1
+<font color="blue">
+Using summary statistics programs in R, determine if the data meet the assumptions of multivariate normality.  Provide evidence to support your conclusion.  Note that missing data are coded 9999.  For now, please use listwise deletion.
+</font>
+
+
+```{r Normality tests}
+# The MVN function performs a multivariate test for the continuous variables in this dataset:
+mvn(PISA09.PathAnalysis[-c(6,7)], subset = NULL, mvnTest = c("mardia"), 
+    covariance = TRUE, tol = 1e-25, alpha = 0.5,
+    scale = FALSE, desc = TRUE, transform = "none", R = 1000,
+    univariateTest = c("Lillie"),
+    univariatePlot = "qqplot", multivariatePlot = "qq",
+    multivariateOutlierMethod = "quan", bc = FALSE, bcType = "rounded",
+    showOutliers = FALSE, showNewData = FALSE)
+
+```
+
+The numerical output above shows the deviation from the univariate and multivariate normality assumptions. The univariate qq-plots in the bottom also show deviation from normality. Finally, Chi-square QQ-plots show significant amount of multivariate outliers in this dataset. 
+
+# Question 2
+<font color="blue">
+Estimate the model using ML.  Compute all indirect and total effects in the model. Interpret the results. 
+</font>
+
+```{r FIRST MODEL}
+PISA.09.FirstModel <- '
+# Regressions
+#===================#
+READING ~ A*MEMO + B*ELAB + C*CSTRAT
+MEMO ~ D*ESCS + E*GENDER
+ELAB ~ F*ESCS + G*GENDER + H*IMMIGR
+CSTRAT ~ I*ESCS + J*GENDER + K*IMMIGR
+
+# Mediation Analysis
+#===================#
+# Indirect effect of ESCS on READING through MEMO
+DA := D*A
+# Indirect effect of ESCS on READING through ELAB
+FB := F*B
+# Indirect effect of ESCS on READING through CSTRAT
+IC := I*C
+# Total indirect effect of ESCS on READING
+DA_FB_IC := DA + FB + IC
+#===================#
+# Indirect effect of GENDER on READING through MEMO
+EA := E*A
+# Indirect effect of GENDER on READING through ELAB
+GB := G*B
+# Indirect effect of GENDER on READING through CSTRAT
+JC := J*C
+# Total indirect effect of GENDER on READING
+EA_GB_JC := EA + GB + JC
+#===================#
+# Indirect effect of IMMIGR on READING through ELAB
+HB := H*B
+# Indirect effect of IMMIGR on READING through CSTRAT
+KC := K*C
+# Total indirect effect of IMMIGR on READING
+HB_KC := HB + KC
+'
+# Perform path analysis
+PISA.09.FirstModel.fit <- sem(PISA.09.FirstModel, data = PISA09.PathAnalysis, estimator = "ml")
+```
+The warning message asks for examining the variances of the variables:
+```{r varTable}
+# Examine the variances of the variables with varTable() function from lavann:
+varTable(PISA.09.FirstModel.fit)
+```
+The variance table from the varTable() function above shows the variable READING needs to be scaled. However, scaling will not impact the fit parameters of the path model. 
+
+```{r summary of FIRST MODEL}
+# Generate summary of path analysis
+summary(PISA.09.FirstModel.fit, fit.measures = TRUE, rsq = T)
+
+modindices(PISA.09.FirstModel.fit, standardized=TRUE, power=TRUE, delta=0.1, 
+           alpha=.05, high.power=.80) %>% 
+  arrange(desc(mi))
+```
+
+# Question 3
+<font color="blue">
+Provide and report on any evidence of the fit (or lack thereof) of the model.
+</font>
+
+Part A: Model identification 
+Starting with the counting rule, there are total of s=7 variables, p=4 endogenous variables (READING, MEMOR, ELAB, and CSTRAT) and q=3 exogenous variables (ESCS, Gender, and Immigr). Therefore, we have 0.5*7(7+1)=28 element in the covariance matrix, and 10 variances and covariances of the exogenous variables (including disturbances). Therefore, the counting rule shows that t=28-21 = 7 degrees of freedom (as shown in the Model Test User Model), which is less than the number of elements in the covariance matrix and, therefore, the model is over identified. 
+
+Part B: Model Parameters estimation
+There are 15 parameters to be estimated in this model: 11 direct path coefficients and 4 indirect path coefficients. Using ML for estimating the path model in this lab has significant test statistics (p < 0.001) with 7 degrees of freedom. The baseline model (with no path coefficients) also shows a significant difference between the data and the model (p < 0.001), with 18 degrees of freedom. However, the output shows that the model with paths is better than that with no path as evident by the test statistic (5585.354) vs. (6845.608). Therefore, it would be beneficial to look at other fit indices (e.g., RMSEA, CFI, TLI, SRMR) for a more comprehensive assessment of model fit. The reported value of the Comparative Fit Index (CFI) is 0.183, which is far from the good fit range 0.8-1.00 suggests that this model poorly fits the data. The Tucker-Lewis Index (TLI), on the other hand, has a reported value of -1.101 is also far from the good fitting range of 0.8-1.00, suggesting that this model did not do a good job fitting the data. 
+
+The Loglikelihood and Information Criteria show that the model could be improved. The Akaike Information Criterion (AIC), the Bayesian Information Criterion (BIC), and the Sample-size adjusted Bayesian (SABIC) can only be used in comparing the fit with other models. The Root Mean Square Error of Approximation (RMSEA) value is 0.397, with a confidence interval ranging from 0.388 to 0.406. This is higher than the commonly accepted thresholds for a good fit (RMSEA <= 0.05) for a close fit and up to 0.08 for a reasonable fit. In this report, the p-value of the null hypothesis that RMSEA <= 0.050 is < 0.001 and for RMSEA >= 0.080 is 1.00 suggests that the RMSEA is truly above the reasonable limit of good model fit. 
+
+The Standardized Root Mean Square Residual (SRMR), which is a measure of the standardized difference between the observed and predicted correlations, has a value of 0.213. Generally, for SRMR, we need the value to be less than 0.08 for a good fit. Therefore, there is a significant discrepancies between the observed and model-implied covariances in this case. 
+
+The regression outputs show that READING score is negatively and significantly influenced by both MEMOrization and the index of ELABoration and positively, and also signficantly, by the index of Control STRATegies (CSTRAT). It is easy to notice that the regression coefficients of READINGS are larger than the rest of the coefficients in the regression due to the difference in the magnitude of the variances as noted in the output of the varTable() function above. 
+
+In this model, all the dependent variables are significantly influenced by their independent variables with the exception of the index of ELABoration, which is negatively influenced by the gender of female. However, that influence is not statistically significant. 
+
+The Variances output show the significance of the variances of the continuous variables. The R-square estimates, on the other hand, indicate the proportion of variance in each dependent variable explained by the independent variables in the model, with the variance in READING is 32.6% expalined by the dependent variables. For the Defined Parameters, all but one, GB, indirect effects are statistically significant, which indicates the true complexity of the model. 
+
+Finally, this model tells the complex story of the impact of socioeconomic factors on the READING scores through the students' approaches to learning. Regardless of the poorly fitted model, the significance of the mediating effects shows the importance of considering these mediating variables for research and development. The model could be improved for a better fit by adding or removing variables or paths or by considering alternative theoretical structures. 
+
+
+# Question 4
+<font color="blue">
+Modify the model using the modification indices and expected parameter change statistics.  Justify the modification on substantive grounds.  (I recognize that this is not your data – make something up that is sensible).
+</font>
+
+The output of the modindices() function show the following parameters:
+1- lhs (left-hand side): the dependent variables.
+2- Operators of either regression (~) or variance-covariance (~~)
+3- rhs (right-hand side): the independent or the covariant variables.   
+4- mi (modification index): the expected change in the model's chi-square for a freely estimated parameter. 
+5- epc (expected parameter change): the expected change in the freely estimated parameter. 
+6- sepc.all (standardized expected parameter change): the standardized EPC. 
+7- delta: minimum expected parameter change for which power is calculated.          
+8- ncp (non-centrality parameter): indicates the deviation from the null hypothesis.
+9- power: probability of correctly rejecting the false null hypothesis that the parameter is zero. A value of 1.00 indicates a very high chance of detecting a true effect.
+10- decision: recommendation based on EPC and model fit. Refer to the slides on Model Modification and Statistical Power. Symbols with asterisks indicate a meaningful expected parameter change.
+
+
+The MI output strongly suggests freeing the (MEMO  ~  CSTRAT) path for estimation (MI=1985.352). This choice is also supported by the sepc.all (0.641), the power of rejecting the false null hypothesis (1.000), and the decision (\*epc:m\*) parameters. Unlike the solution in the exemplary homework, which suggested freeing the path of (READING ~ ESCS) for estimation by looking at the inflated EPC value of 33.769 only (EPC can be influenced by the poor fit of the model, as in the case of this exercise). It overlooked the small MI value of 616.031, the smaller sepc.all value of 0.294, the higher probability of type II error 0.051, and finally the less highlighted decision (\*\*(m)\*\*) of possible misspecification in the model. 
+
+
+Following the procedures introduced in the course, a total of five models have been introduced in this lab. Following are the specifications of the all the models and their output: 
+
+```{r SECOND MODEL}
+PISA.09.SecondModel <- '
+
+# Regressions
+READING ~ A*MEMO + B*ELAB + C*CSTRAT
+MEMO ~ D*ESCS + E*GENDER + L*CSTRAT
+ELAB ~ F*ESCS + G*GENDER + H*IMMIGR
+CSTRAT ~ I*ESCS + J*GENDER + K*IMMIGR
+
+# Mediation Analysis
+#===================#
+# Indirect effect of ESCS on READING through MEMO
+DA := D*A
+# Indirect effect of ESCS on READING through ELAB
+FB := F*B
+# Indirect effect of ESCS on READING through CSTRAT
+IC := I*C
+# Indirect effect of ESCS on READING through CSTRAT & MEMOR (new to second model)
+ILA:= I*L*A
+# Total indirect effect of ESCS on READING
+DA_FB_IC := DA + FB + IC + ILA
+#===================#
+# Indirect effect of GENDER on READING through MEMO
+EA := E*A
+# Indirect effect of GENDER on READING through ELAB
+GB := G*B
+# Indirect effect of GENDER on READING through CSTRAT
+JC := J*C
+# Indirect effect of GENDER on READING through CSTRAT & MEMO (new to second model)
+JLA := J*L*A
+# Total indirect effect of GENDER on READING
+EA_GB_JC := EA + GB + JC + JLA
+#===================#
+# Indirect effect of IMMIGR on READING through ELAB
+HB := H*B
+# Indirect effect of IMMIGR on READING through CSTRAT
+KC := K*C
+# Indirect effect of IMMIGR on READING through CSTRAT & MEMO (new to second model)
+KLA := K*L*A
+# Total indirect effect of IMMIGR on READING
+HB_KC := HB + KC + KLA
+'
+# Perform path analysis
+PISA.09.SecondModel.fit <- sem(PISA.09.SecondModel, data = PISA09.PathAnalysis, estimator = "ml")
+
+# Generate summary of path analysis
+summary(PISA.09.SecondModel.fit, fit.measures = TRUE, rsq = T)
+
+modindices(PISA.09.SecondModel.fit, standardized=TRUE, power=TRUE, delta=0.1, 
+           alpha=.05, high.power=.80) %>% 
+  arrange(desc(mi))
+```
+
+
+
+```{r THIRD MODEL}
+PISA.09.ThirdModel <- '
+
+# Regressions
+#===================#
+READING ~ A*MEMO + B*ELAB + C*CSTRAT
+MEMO ~ D*ESCS + E*GENDER + L*CSTRAT
+ELAB ~ F*ESCS + G*GENDER + H*IMMIGR + M*CSTRAT
+CSTRAT ~ I*ESCS + J*GENDER + K*IMMIGR
+
+# Mediation Analysis
+#===================#
+# Indirect effect of ESCS on READING through MEMO
+DA := D*A
+# Indirect effect of ESCS on READING through ELAB
+FB := F*B
+# Indirect effect of ESCS on READING through CSTRAT
+IC := I*C
+# Indirect effect of ESCS on READING through CSTRAT & MEMOR 
+ILA := I*L*A
+# Indirect effect of ESCS on READING through CSTRAT & ELAB (new to third model)
+IMB := I*M*B
+# Total indirect effect of ESCS on READING
+DA_FB_IC_ILA_IMB := DA + FB + IC + ILA + IMB
+#===================#
+# Indirect effect of GENDER on READING through MEMO
+EA := E*A
+# Indirect effect of GENDER on READING through ELAB
+GB := G*B
+# Indirect effect of GENDER on READING through CSTRAT
+JC := J*C
+# Indirect effect of GENDER on READING through CSTRAT & MEMO 
+JLA := J*L*A
+# Indirect effect of GENDER on READING through CSTRAT & ELAB (new to third model)
+JMB := J*M*B
+# Total indirect effect of GENDER on READING
+EA_GB_JC_JLA_JMB := EA + GB + JC + JLA + JMB
+#===================#
+# Indirect effect of IMMIGR on READING through ELAB
+HB := H*B
+# Indirect effect of IMMIGR on READING through CSTRAT
+KC := K*C
+# Indirect effect of IMMIGR on READING through CSTRAT & MEMO 
+KLA := K*L*A
+# Indirect effect of IMMIGR on READING through CSTRAT & ELAB (new to third model)
+KMB := K*M*B
+# Total indirect effect of IMMIGR on READING
+HB_KC_KLA_KMB := HB + KC + KLA + KMB
+'
+#==============================================================================#
+# Generate summary of path analysis
+PISA.09.ThirdModel.fit <- sem(PISA.09.ThirdModel, data = PISA09.PathAnalysis, estimator = "ml")
+
+summary(PISA.09.ThirdModel.fit, fit.measures = TRUE, rsq = T)
+#==============================================================================#
+modindices(PISA.09.ThirdModel.fit, standardized=TRUE, power=TRUE, delta=0.1, 
+           alpha=.05, high.power=.80) %>% 
+  arrange(desc(mi))
+```
+
+```{r FOURTH MODEL}
+PISA.09.FourthModel <- '
+
+# Regressions
+#===================#
+READING ~ A*MEMO + B*ELAB + C*CSTRAT
+MEMO ~ D*ESCS + E*GENDER + L*CSTRAT + N*ELAB
+ELAB ~ F*ESCS + G*GENDER + H*IMMIGR + M*CSTRAT
+CSTRAT ~ I*ESCS + J*GENDER + K*IMMIGR
+
+# Mediation Analysis
+#===================#
+# Indirect effect of ESCS on READING through MEMO
+DA := D*A
+# Indirect effect of ESCS on READING through ELAB
+FB := F*B
+# Indirect effect of ESCS on READING through ELAB & MEMOR
+FNA := F*N*A
+# Indirect effect of ESCS on READING through CSTRAT
+IC := I*C
+# Indirect effect of ESCS on READING through CSTRAT & MEMOR 
+ILA := I*L*A
+# Indirect effect of ESCS on READING through CSTRAT & ELAB 
+IMB := I*M*B
+# Indirect effect of ESCS on READING through CSTRAT & ELAB & MEMOR (new to the fourth model)
+IMNA := I*M*N*A
+# Total indirect effect of ESCS on READING
+DA_FB_IC_ILA_IMB := DA + FB + IC + ILA + IMB + FNA + IMNA
+#===================#
+# Indirect effect of GENDER on READING through MEMO
+EA := E*A
+# Indirect effect of GENDER on READING through ELAB
+GB := G*B
+# Indirect effect of GENDER on READING through CSTRAT
+JC := J*C
+# Indirect effect of GENDER on READING through CSTRAT & MEMO 
+JLA := J*L*A
+# Indirect effect of GENDER on READING through CSTRAT & ELAB 
+JMB := J*M*B
+# Indirect effect of GENDER on READING through CSTRAT & ELAB & MEMO (new to the fourth model)
+JMNA := J*M*N*A
+# Total indirect effect of GENDER on READING
+EA_GB_JC_JLA_JMB := EA + GB + JC + JLA + JMB + JMNA
+#===================#
+# Indirect effect of IMMIGR on READING through ELAB
+HB := H*B
+# Indirect effect of IMMIGR on READING through CSTRAT
+KC := K*C
+# Indirect effect of IMMIGR on READING through CSTRAT & MEMO 
+KLA := K*L*A
+# Indirect effect of IMMIGR on READING through CSTRAT & ELAB
+KMB := K*M*B
+# Indirect effect of IMMIGR on READING through CSTRAT & ELAB & MEMO (new to the fourth model)
+KMNA := K*M*N*A
+# Total indirect effect of IMMIGR on READING
+HB_KC_KLA_KMB := HB + KC + KLA + KMB + KMNA
+'
+#==============================================================================#
+# Generate summary of path analysis
+PISA.09.FourthModel.fit <- sem(PISA.09.FourthModel, data = PISA09.PathAnalysis, estimator = "ml")
+
+summary(PISA.09.FourthModel.fit, fit.measures = TRUE, rsq = T)
+#==============================================================================#
+modindices(PISA.09.FourthModel.fit, standardized=TRUE, power=TRUE, delta=0.1, 
+           alpha=.05, high.power=.80) %>% 
+  arrange(desc(mi))
+```
+
+```{r FIFTH MODEL}
+PISA.09.FifthModel <- '
+
+# Regressions
+#===================#
+READING ~ A*MEMO + B*ELAB + C*CSTRAT + O*ESCS + P*GENDER + Q*IMMIGR 
+#New to the Fifth model O*ESCS + P*GENDER + Q*IMMIGR 
+MEMO ~ D*ESCS + E*GENDER + L*CSTRAT + N*ELAB
+ELAB ~ F*ESCS + G*GENDER + H*IMMIGR + M*CSTRAT
+CSTRAT ~ I*ESCS + J*GENDER + K*IMMIGR
+
+# Mediation Analysis
+#===================#
+# Indirect effect of ESCS on READING through MEMO
+DA := D*A
+# Indirect effect of ESCS on READING through ELAB
+FB := F*B
+# Indirect effect of ESCS on READING through ELAB & MEMOR
+FNA := F*N*A
+# Indirect effect of ESCS on READING through CSTRAT
+IC := I*C
+# Indirect effect of ESCS on READING through CSTRAT & MEMOR 
+ILA := I*L*A
+# Indirect effect of ESCS on READING through CSTRAT & ELAB 
+IMB := I*M*B
+# Indirect effect of ESCS on READING through CSTRAT & ELAB & MEMOR 
+IMNA := I*M*N*A
+# Total indirect effect of ESCS on READING
+DA_FB_IC_ILA_IMB := DA + FB + IC + ILA + IMB + FNA + IMNA
+#===================#
+# Indirect effect of GENDER on READING through MEMO
+EA := E*A
+# Indirect effect of GENDER on READING through ELAB
+GB := G*B
+# Indirect effect of GENDER on READING through CSTRAT
+JC := J*C
+# Indirect effect of GENDER on READING through CSTRAT & MEMO 
+JLA := J*L*A
+# Indirect effect of GENDER on READING through CSTRAT & ELAB 
+JMB := J*M*B
+# Indirect effect of GENDER on READING through CSTRAT & ELAB & MEMO 
+JMNA := J*M*N*A
+# Total indirect effect of GENDER on READING
+EA_GB_JC_JLA_JMB := EA + GB + JC + JLA + JMB + JMNA
+#===================#
+# Indirect effect of IMMIGR on READING through ELAB
+HB := H*B
+# Indirect effect of IMMIGR on READING through CSTRAT
+KC := K*C
+# Indirect effect of IMMIGR on READING through CSTRAT & MEMO 
+KLA := K*L*A
+# Indirect effect of IMMIGR on READING through CSTRAT & ELAB
+KMB := K*M*B
+# Indirect effect of IMMIGR on READING through CSTRAT & ELAB & MEMO 
+KMNA := K*M*N*A
+# Total indirect effect of IMMIGR on READING
+HB_KC_KLA_KMB := HB + KC + KLA + KMB + KMNA
+'
+#==============================================================================#
+# Generate summary of path analysis
+PISA.09.FifthModel.fit <- sem(PISA.09.FifthModel, data = PISA09.PathAnalysis, estimator = "ml")
+
+summary(PISA.09.FifthModel.fit, fit.measures = TRUE, rsq = T)
+#==============================================================================#
+modindices(PISA.09.FifthModel.fit, standardized=TRUE, power=TRUE, delta=0.1, 
+           alpha=.05, high.power=.80) %>% 
+  arrange(desc(mi))
+```
+
+
+# Question 5
+<font color="blue">
+Choose a final model based on the AIC.
+</font>
+
+The output of the Fifth model shows that it is a perfect fit with the null hypothesis of the Chi-square test = 0.769, df=1, and p > 0.05. Therefore, we can not reject the null hypothesis that this model fits the data really well. Further evident by the values of the CFI & TLI of 1.00, RMSEA of 0.00, and SRMR of 0.002. The diagnostic measures of the model show that there is no further significant room for improvement. Finally, the journey towards the final model speaks of the factor-wise approach to the analysis. Specifically, in the improving the model, the ESCS, GENDER, and IMMIGration variables tend to share the same behavior of directly connecting to the endogenous variable of READING, while at the same-time, the MEMOR, ELAB, and CSTART do share the common factor and they tend to aggregate with each other. This suggests that we need to consider a factor-approach to the model analysis rather than single variable approach as we experienced in this lab. The Attached image below shows the new model with the arrows in orange are the new paths added to the model. 
+
+https://github.com/alibahkali/EDPSY960/blob/main/FifthModel.jpg

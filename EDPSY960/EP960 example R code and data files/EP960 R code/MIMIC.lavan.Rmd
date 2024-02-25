@@ -1,0 +1,91 @@
+---
+title: "EP 960 MIMIC Modeling"
+author: "David Kaplan"
+output:
+  html_document: default
+pdf_document: default
+
+---
+  
+```{r,echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Install relevant packages
+install.packages("lavaan")
+
+install.packages("semTools")
+
+```{r,echo=TRUE}
+library(lavaan)
+library(semTools)
+```
+
+### Read in data and remove missing data listwise.  Data come from the National Educational Longitudinal Study of 1988. Note:  Private school coded 1, Public School coded 0. Scales are coded 1=strongly agree, 4=strongly disagree
+
+```{r,echo=TRUE}
+pubpriv <- read.csv("~/desktop/newpubpriv.csv",header=T)
+pubpriv[pubpriv==8]=NA
+```
+
+### Reverse code to make easier to interpret.  Now the scales are coded 1=strongly disagree, 4=strongly agree
+
+```{r,echo=TRUE}
+pubpriv[,c(3:17)] <- 5-pubpriv[,c(3:17)]
+head(pubpriv)
+```
+
+
+# MIMIC model specification
+```{r,echo=TRUE}
+
+# Multiple indicator part
+
+schclimate <- '   pos =~ getalng+spirit+fair+racefrnd+
+tchgood+tchint+tchprais+listen
+
+neg =~ disrupt+putdown+strict+studown+feelsafe+impede+
+misbehav
+
+
+# Multiple "cause" part
+
+pos ~ private
+neg ~ private
+
+# Regression of observed variables on school type
+
+getalng ~ 0*private
+spirit ~ 0*private 
+fair ~ 0*private
+racefrnd ~ 0*private 
+tchgood ~ 0*private
+tchint ~ 0*private 
+tchprais ~ 0*private
+listen ~ 0*private 
+disrupt ~ 0*private
+putdown ~ 0*private
+strict ~ 0*private 
+studown ~ 0*private
+feelsafe ~ 0*private
+impede ~ 0*private
+misbehav ~ 0*private
+
+'
+```
+# Summary of results
+```{r,echo=TRUE}
+
+fit <- sem(schclimate,data=pubpriv,missing="FIML")
+summary(fit, fit.measures=TRUE)
+```
+
+Consistent with the multiple group analysis, we find that private schools more strongly agree with positive statements about their schools compared to their public school peers, and public school students more strongly agree with the negative statements toward their schools than their private school peers.  
+
+```{r,echo=TRUE}
+mi <- modindices(fit,standardized=TRUE,power=TRUE,delta=0.1,alpha=.05,high.power=.80)
+mi[mi$op == "~",]  # Trick to show just the MIs for the regressions
+```
+
+Modification indices in the MIMIC model are helpful in identifying which items are predicted by school type over and above the latent variables.  Here we find that
+some of the negative statements about schools can be predicted by the type of school over and above their latent variable.  For example, we see a large difference between private and public schools on the item "putdown".  The effect is positive indicating that private school students actually tend to agree more than the public school peers that they are putdown by teachers over and above their general negative perception of the climate of the school.  On the other hand, public school students tend to agree that there is greater disruptions in schools compared to their private school peers over and above the generally greater negative perception of school climate.

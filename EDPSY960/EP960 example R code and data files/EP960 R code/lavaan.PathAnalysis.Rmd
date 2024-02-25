@@ -1,0 +1,179 @@
+---
+title: "EP 960 Path analysis"
+author: "David Kaplan"
+output:
+  html_document: default
+pdf_document: default
+fig_caption: true
+---
+  
+```{r,echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Install necessary packages and load
+
+install.packages("lavaan")
+
+install.packages("semTools")
+
+install.packages("MVN")
+
+install.packages("dplyr")
+
+
+```{r,echo=TRUE}
+library(lavaan)
+library(semTools)
+library(gsl)  # Needed for MVN #
+library(MVN)
+library(dplyr)
+```
+# Read in data, get summary statistics, and test for
+# univariate and multivariate normality
+```{r,echo=TRUE}
+scimodel <- read.csv("~/desktop/sciex.csv",header=T)
+mvn(scimodel,mvnTest="mardia",univariateTest="Lillie")
+```
+
+# Set up lavaan code
+```{r,echo=TRUE}
+pathmodel <- ' 
+
+# regressions
+sciach ~ A*scigrade10
+scigrade10 ~ B*scigrade6+C*ses+D*certsci+E*understand+F*challenge
+challenge~G*understand
+understand ~ H*certsci
+
+# Mediation analysis
+
+# Indirect effect of ses on SCIACH through SCIGRA10
+
+CA := C*A
+
+
+# Indirect effect off CERTSCI on SCIACH through SCIGRA10
+
+AD := A*D
+
+# Indirect effect off CERTSCI on SCIACH through UNDERSTD and SCIGRA10
+
+AEH := A*E*H
+
+# Indirect effect of CERTSCI on SCIACH through UNDERSTD CHALLG and SCIGRA10
+
+AFGH := A*F*G*H
+
+
+# Total indirect effect of CERTSCI on SCIACH
+
+AD_AEH_AFGH := AD + AEH + AFGH
+
+'
+
+```
+
+# Obtain summary of path analysis
+```{r,echo=TRUE}
+fitm1 <- sem(pathmodel,data=scimodel, estimator="ml")
+summary(fitm1, fit.measures=TRUE)
+```
+We find that model does not fit the data as evidenced by a number of fit statistics.  The RMSEA suggests mediocre fit.  The regression coefficients are interpreted as usual unstandardized regression coefficients.  Notice that the indirect effect of ses on SCIACH through SCIGRA10 is statistically signficant.  Remaining indirect effects are not significant.
+
+# Obtain standardized solution
+```{r,echo=TRUE}
+standardizedSolution(fitm1)
+```
+
+This is the standardized solution interpreted as standardized regression coefficients.
+
+# Obtain modification indices and organize for simplicity
+```{r,echo=TRUE}
+modindices1 <- modindices(fitm1,standardized=TRUE,power=TRUE,delta=0.1,alpha=.05,high.power=.80)
+modindices1$decision = as.factor(modindices1$decision)
+modindices1$decision = factor(modindices1$decision, levels(modindices1$decision)[c(3,4,1,5,2)])
+modindices1 %>%
+  mutate_if(is.numeric, ~round(.,1)) %>%
+  subset(op != "~~") %>%
+  arrange(desc(abs(epc))) %>%
+  arrange(decision)
+```
+
+These are the modification indices used to determine which paths could possibly be freed leading to an improvement in model fit.  Remember, this turns the modeling exercise into an exploratory analysis unless you intend to cross-validate.  It is best if you are going to modify the model to pay attention to changes in the BIC. 
+
+Here is the glossary for the decision codes
+
+“m”:		Possible presence of a misspecification.  Power is low but the MI is 
+		significant.
+
+“nm”:		No misspecification.  Power is high but the MI is non-significant.
+
+“EPC:m”:	Possible serious misspecification.  Power of the test is high and the MIis significant.  Should also look at EPC to determine substantive 			importance.   If EPC is large, then it is a serious misspecification.
+
+“EPC:nm”:	EPC value is deemed low.
+
+“I”:		Inconclusive.
+
+We find that perhaps the regression of SCIACH on SES should be estimated. To do that, we estimate the model again, allowing that path to be estimated.
+
+```{r,echo=TRUE}
+pathmodel2 <- ' 
+
+# regressions
+sciach ~ A*scigrade10 + I*ses
+scigrade10 ~ B*scigrade6+C*ses+D*certsci+E*understand+F*challenge
+challenge~G*understand
+understand ~ H*certsci
+
+# Mediation analysis
+
+# Indirect effect of ses on SCIACH through SCIGRA10
+
+CA := C*A
+
+
+# Indirect effect off CERTSCI on SCIACH through SCIGRA10
+
+AD := A*D
+
+# Indirect effect off CERTSCI on SCIACH through UNDERSTD and SCIGRA10
+
+AEH := A*E*H
+
+# Indirect effect of CERTSCI on SCIACH through UNDERSTD CHALLG and SCIGRA10
+
+AFGH := A*F*G*H
+
+
+# Total indirect effect of CERTSCI on SCIACH
+
+AD_AEH_AFGH := AD + AEH + AFGH
+
+# Total effect of SES on SCIACH through SCIGRA10
+
+I_CA := I + C*A
+
+'
+```
+
+# Obtain summary of path analysis with modification
+
+```{r,echo=TRUE}
+fitm2 <- sem(pathmodel2,data=scimodel)
+summary(fitm2, fit.measures=TRUE)
+```
+
+Notice that the overall fit measure dropped 825.753 as predicted by the MI, and that the effect is about what was predicted by the EPC.  The other fit statistics have improved dramatically.  The BIC clearly shows that this modified model is preferred. 
+
+# Obtain modification indices
+```{r,echo=TRUE}
+modindices2 <- modindices(fitm2,standardized=TRUE,power=TRUE,delta=0.1,alpha=.05,high.power=.80)
+modindices2 <- modindices(fitm1,standardized=TRUE,power=TRUE,delta=0.1,alpha=.05,high.power=.80)
+modindices2$decision = as.factor(modindices2$decision)
+modindices2$decision = factor(modindices2$decision, levels(modindices2$decision)[c(3,4,1,5,2)])
+modindices2 %>%
+  mutate_if(is.numeric, ~round(.,1)) %>%
+  subset(op != "~~") %>%
+  arrange(desc(abs(epc))) %>%
+  arrange(decision)

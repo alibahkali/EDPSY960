@@ -1,0 +1,140 @@
+---
+title: "Multilevel CFA"
+subtitle: "EP 960"
+author: "David Kaplan"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Multilevel Confirmatory Factor Analysis
+
+# Install relevant packages
+
+install.packages("lavaan", repos="http://www.da.ugent.be", type="source")
+
+install.packages("semTools")
+
+require(lavaan)
+
+require(semTools)
+
+```{r,echo=TRUE}
+library(lavaan)
+library(semTools)
+```
+
+# Read in the data
+
+```{r, echo=TRUE}
+# Read in data 
+
+CanadaCFA <-read.csv("~/desktop/Canada.csv",header=TRUE) 
+CanadaCFA <- subset(CanadaCFA, select=c(IDSCHOOL,ASBR08A,ASBR08B,ASBR08C,ASBR08D,ASBR08E,ASBR08F,ASBR08G))
+names(CanadaCFA) <- c("schoolID","dowell","easy","harder","interesting","difficultwords","teacherpraise","otherthings")
+CanadaCFA[CanadaCFA==999999]=NA
+```
+
+# Variable names and labels
+
+## The scale is from Agree a lot, Agree, Disagree, Disagree a lot
+
+#### dowell - I usually do well in reading
+#### easy - Reading is easy for me
+#### harder - Reading is harder for me than for many of my classmates
+#### interesting - If a book is interesting, I don’t care how hard it is to read
+#### difficultwords - I have trouble reading stories with difficult words
+#### teacherpraise - My teacher tells me I am a good reader 
+#### otherthings - Reading is harder for me than any other subject
+
+
+```{r,echo=TRUE}
+
+# Set up multilevel CFA with no structure on school level
+
+multilevelCFA <- '
+
+level: 1
+  fw1 =~ dowell + easy + interesting + teacherpraise
+  fw2 =~ harder + difficultwords + otherthings
+
+level: 2
+  dowell ~~ dowell + easy + interesting + teacherpraise + harder + difficultwords + otherthings
+  easy ~~ easy + interesting + teacherpraise + harder + difficultwords + otherthings
+  interesting ~~ interesting + teacherpraise + harder + difficultwords + otherthings
+  teacherpraise ~~ teacherpraise + harder + difficultwords + otherthings
+  harder ~~  harder + difficultwords + otherthings
+  difficultwords ~~ difficultwords + otherthings
+  otherthings ~~ otherthings
+'
+```
+
+Notice that for level-2 we are simple allowing for an unrestricted between level covariance matrix.
+
+# Obtain fit statistics, results, and intraclass correlations
+
+```{r,echo=TRUE}
+fit <- sem(multilevelCFA, data = CanadaCFA, estimator="mlr", missing="fiml",
+           cluster = "schoolID")
+
+summary(fit)
+fitMeasures(fit)
+lavInspect(fit, "h1")
+lavInspect(fit, "icc")
+```
+
+First, pay close attention to the BIC.  Second, notice that the ICCs are rather small suggesting that not very much of the variation in these measures can be explained by differences among schools.
+
+
+# Allow structure on school level
+```{r,echo=TRUE}
+MultilevelCFAm2 <- '
+
+level: 1
+  fw1 =~ dowell + easy + interesting + teacherpraise
+  fw2 =~ harder + difficultwords + otherthings
+
+level: 2
+  fb1 =~ dowell + easy + interesting + teacherpraise
+  fb2 =~ harder + difficultwords + otherthings
+
+# Fix between variances to zero
+
+  dowell ~~ 0*dowell
+  easy ~~ 0*easy
+  interesting ~~ 0*interesting
+  teacherpraise ~~ 0*teacherpraise
+  harder ~~ 0*harder
+  difficultwords ~~ 0*difficultwords
+  otherthings ~~ 0*otherthings
+
+'
+```
+
+Notice here that we are modeling the between school covariance matrix as a function of the same two factors.  Often the between variances are slightly negative, so it is typical to fix the level-2 variances to zero.  
+
+# Obtain fit statistics 
+```{r,echo=TRUE}
+fit2 <- sem(MultilevelCFAm2, data = CanadaCFA, estimator="mlr", missing="fiml",
+           cluster = "schoolID")
+summary(fit2)
+fitMeasures(fit2)
+lavInspect(fit2, "h1")
+lavInspect(fit2, "icc")
+```
+Notice that the BIC for this model is lower than the BIC for the first model that did not specify a structure at the school level.
+
+# Compare to ignoring multilevel structure
+```{r,echo=TRUE}
+SingleLevelCFA <- '
+
+  f1 =~ dowell + easy + interesting + teacherpraise
+  f2 =~ harder + difficultwords + otherthings
+'
+fit3 <- cfa(SingleLevelCFA, data = CanadaCFA, estimator="mlr", missing="fiml",)
+summary(fit3)
+fitMeasures(fit3)
+```
+Notice that the BIC is higher when not accounting for the multilevel structure of the data.  So, even though the ICCs are fairly small, accounting for the multilevel structure of the data led to a better model as measured by the BIC.
